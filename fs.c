@@ -30,6 +30,23 @@ static int fs_getattr(const char* path, struct stat* st, struct fuse_file_info* 
     return -ENOENT;
 }
 
+// Read directory
+static int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, 
+                        off_t offset, struct fuse_file_info* fi, enum fuse_readdir_flags flags) {
+    // Add . and ..
+    filler(buf, ".", NULL, 0, 0);
+    filler(buf, "..", NULL, 0, 0);
+    
+    // Add files from JSON
+    const char* key;
+    json_t* value;
+    json_object_foreach(root_json, key, value) {
+        filler(buf, key, NULL, 0, 0);
+    }
+
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     return 0;
 }
