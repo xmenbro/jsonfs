@@ -49,10 +49,9 @@ static int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
 
 // Read file
 static int fs_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_file_info* fi) {
-    // Check if it isn't a file
     json_t* value = json_object_get(root_json, path + 1);
-    if (!json_is_string(value))
-        return -ENOENT;
+    //if (!json_is_string(value))
+    //    return -ENOENT;
 
     // Get a content and lenght
     const char* content = json_string_value(value);
