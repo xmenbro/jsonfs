@@ -199,10 +199,42 @@ int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
 
 // Read file
 int fs_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_file_info* fi) {
-    json_t* value = json_object_get(root_json, path + 1);
+    // Get the path info
+    struct path_info* info = parse_path(path);
+    if (!info)
+        return -ENOENT;
 
-    // Get a content and lenght
-    const char* content = json_string_value(value);
+    json_t* value = info->current;
+    free(info);
+    
+    // if it isn't a file
+    if (!value || is_directory(value))
+        return -EISDIR;
+
+    const char* content = NULL;
+    char temp_buf[128];
+    
+    // Define the type of content
+    if (json_is_string(value))
+        content = json_string_value(value);
+    else if (json_is_integer(value)) {
+        snprintf(temp_buf, sizeof(temp_buf), "%lld", (long long)json_integer_value(value));
+        content = temp_buf;
+    }
+    else if (json_is_real(value)) {
+        snprintf(temp_buf, sizeof(temp_buf), "%f", json_real_value(value));
+        content = temp_buf;
+    }
+    else if (json_is_boolean(value))
+        content = json_boolean_value(value) ? "true" : "false";
+    else if (json_is_null(value))
+        content = "null";
+    else
+        return -EIO;
+
+    if (!content)
+        return -EIO;
+    
     size_t len = strlen(content);
 
     if (offset >= len)
