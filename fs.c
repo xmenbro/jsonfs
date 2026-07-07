@@ -84,6 +84,13 @@ struct path_info* parse_path(const char* path) {
     return info;
 }
 
+// Check if it's a directory
+int is_directory(json_t* value) {
+    if (!value)
+        return 0;
+    return json_is_object(value) || json_is_array(value);
+}
+
 // Get file's atrributes: mode, type, size
 int fs_getattr(const char* path, struct stat* st, struct fuse_file_info* fi) {
     memset(st, 0, sizeof(struct stat));
