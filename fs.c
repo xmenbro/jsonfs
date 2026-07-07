@@ -100,17 +100,57 @@ int fs_getattr(const char* path, struct stat* st, struct fuse_file_info* fi) {
         st->st_nlink = 2;
         return 0;
     }
-    // Find a key in JSON skipping "/"
-    json_t* value = json_object_get(root_json, path + 1);
-    if (json_is_string(value)) {
+
+    struct path_info* info = parse_path(path);
+    if (!info)
+        return -ENOENT;
+    json_t* value = info->current;
+    
+    // if it's a directory
+    if (is_directory(value)) {
+        st->st_mode = S_IFDIR | 0775;
+        st->st_nlink = 2;
+    }
+    // if it's a string (simple file)
+    else if (json_is_string(value)) {
         st->st_mode = S_IFREG | 0644;
         st->st_nlink = 1;
-        st->st_size = strlen(json_string_value(value));
-        return 0;
+        const char* content = json_string_value(value);
+        if (content)
+            st->st_size = strlen(content);
+        else
+            st->st_size = 0;
     }
-
-    // The file wasn't found
-    return -ENOENT;
+    // if it's a number (also might be a file)
+    else if (json_is_number(value)) {
+        st->st_mode = S_IFREG | 0644;
+        st->st_nlink = 1;
+        char buf[64];
+        if (json_is_integer(value))
+            snprintf(buf, sizeof(buf), "%lld", (long long)json_integer_value(value));
+        else
+            snprintf(buf, sizeof(buf), "%f", json_real_value(value));
+        st->st_size = strlen(buf);
+    }
+    // if it's a bool
+    else if (json_is_boolean(value)) {
+        st->st_mode = S_IFREG | 0644;
+        st->st_nlink = 1;
+        st->st_size = json_boolean_value(value) ? 4 : 5;
+    }
+    // if it's NULL
+    else if (json_is_null(value)) {
+        st->st_mode = S_IFREG | 0644;
+        st->st_nlink = 1;
+        st->st_size = 4;
+    }
+    else {
+        free(info);
+        return -ENOENT;
+    }
+    
+    free(info);
+    return 0;
 }
 
 // Read directory
