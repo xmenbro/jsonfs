@@ -160,12 +160,39 @@ int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
     filler(buf, ".", NULL, 0, 0);
     filler(buf, "..", NULL, 0, 0);
     
-    // Add files from JSON
-    const char* key;
-    json_t* value;
-    json_object_foreach(root_json, key, value) {
-        filler(buf, key, NULL, 0, 0);
+    // Determine the target
+    json_t* target;
+    if (strcmp(path, "/") == 0)
+        target = root_json;
+    else {
+        struct path_info* info = parse_path(path);
+        
+        if (!info)
+            return -ENOENT;
+        target = info->current;
+        free(info);
     }
+
+    if (!target)
+        return -ENOENT;
+    
+    if (json_is_object(target)) {
+        const char* key;
+        json_t* value;
+        json_object_foreach(target, key, value) {
+            filler(buf, key, NULL, 0, 0);
+        }
+    }
+    else if (json_is_array(target)) {
+        size_t size = json_array_size(target);
+        char index_str[32];
+        for (size_t i = 0; i < size; i++) {
+            snprintf(index_str, sizeof(index_str), "%zu", i);
+            filler(buf, index_str, NULL, 0, 0);
+        }
+    }
+    else
+        return -ENOTDIR;
 
     return 0;
 }
