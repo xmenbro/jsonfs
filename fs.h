@@ -37,3 +37,5 @@ int fs_write(const char* path, const char* buf, size_t size, off_t offset, struc
 struct path_info* parse_path(const char* path);
 // Check if it's a directory
 int is_directory(json_t* value);
+// Replace node
+int replace_node(struct path_info* info, json_t* node, json_t* new_node);
