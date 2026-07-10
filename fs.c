@@ -10,6 +10,7 @@ pthread_mutex_t json_mutex = PTHREAD_MUTEX_INITIALIZER;
 char* json_file_path = NULL;
 
 // Parse the path
+/*
 struct path_info* parse_path(const char* path) {
     struct path_info* info = malloc(sizeof(struct path_info));
     
@@ -87,6 +88,93 @@ struct path_info* parse_path(const char* path) {
     free(path_copy);
     return info;
 }
+*/
+// Parse the path
+struct path_info* parse_path(const char* path) {
+    struct path_info* info = malloc(sizeof(struct path_info));
+    
+    if (!info)
+        return NULL;
+
+    // Initialize struct
+    info->parent = NULL;
+    info->current = root_json;
+    info->name = NULL;
+    
+    // Skip '/'
+    if (path[0] == '/')
+        path++;
+
+    if (strlen(path) == 0) {
+        info->current = root_json;
+        return info;
+    }
+
+    // Split path into segments
+    char* path_copy = strdup(path);
+    char* saveptr;
+    char* token = strtok_r(path_copy, "/", &saveptr);
+
+    // Parse all segments
+    while (token != NULL) {
+        info->parent = info->current;
+        
+        // if it's a json object
+        if (json_is_object(info->current)) {
+            json_t* child = json_object_get(info->current, token);
+            
+            if (!child) {
+                free(path_copy);
+                free(info);
+                return NULL;
+            }
+
+            info->current = child;
+            if (info->name) {
+                free(info->name);
+            }
+            info->name = strdup(token);
+        }
+        // if it's a json array
+        else if (json_is_array(info->current)) {
+            // Parse index
+            char* endptr;
+            long index = strtol(token, &endptr, 10);
+            if (*endptr != '\0' || index < 0 || index >= json_array_size(info->current)) {
+                free(path_copy);
+                if (info->name) free(info->name);
+                free(info);
+                return NULL;
+            }
+            
+            json_t* child = json_array_get(info->current, index);
+            
+            if (!child) {
+                free(path_copy);
+                if (info->name) free(info->name);
+                free(info);
+                return NULL;
+            }
+            
+            info->current = child;
+            if (info->name) {
+                free(info->name);
+            }
+            info->name = strdup(token);
+        }
+        // if it isn't an array and it isn't an object
+        else {
+            free(path_copy);
+            if (info->name) free(info->name);
+            free(info);
+            return NULL;
+        }
+        token = strtok_r(NULL, "/", &saveptr);
+    }
+    
+    free(path_copy);
+    return info;
+}
 
 // Check if it's a directory
 int is_directory(json_t* value) {
@@ -95,19 +183,61 @@ int is_directory(json_t* value) {
     return json_is_object(value) || json_is_array(value);
 }
 
+// Replace node
+int replace_node(struct path_info* info, json_t* node, json_t* new_node) {
+    // Get parent
+    json_t* parent = info->parent;
+
+    if (!new_node)
+        return -ENOMEM;
+    // If it's a json object
+    if (parent && json_is_object(parent)) {
+        printf("DEBUG: Replacing in object, parent=%p, name=%s\n", parent, info->name);
+        json_object_set(parent, info->name, new_node);
+        json_decref(node);
+        return 0;
+    }
+    // If it's an array
+    else if (parent && json_is_array(parent)) {
+        size_t idx;
+        json_t* val;
+        json_array_foreach(parent, idx, val) {
+            if (val == node) {
+                json_array_set(parent, idx, new_node);
+                json_decref(node);
+                return 0;
+            }
+        }
+        json_decref(new_node);
+        return -EINVAL;   
+    }
+    // If it's the root
+    else {
+        json_decref(root_json);
+        root_json = new_node;
+        return 0;
+    }
+}
+
 // Get file's atrributes: mode, type, size
 int fs_getattr(const char* path, struct stat* st, struct fuse_file_info* fi) {
     memset(st, 0, sizeof(struct stat));
+
+    pthread_mutex_lock(&json_mutex);
+
     // Root is always the directory
     if (strcmp(path, "/") == 0) {
         st->st_mode = S_IFDIR | 0775;
         st->st_nlink = 2;
+        pthread_mutex_unlock(&json_mutex);
         return 0;
     }
 
     struct path_info* info = parse_path(path);
-    if (!info)
+    if (!info) {
+        pthread_mutex_unlock(&json_mutex);
         return -ENOENT;
+    }
     json_t* value = info->current;
     
     // if it's a directory
@@ -150,10 +280,13 @@ int fs_getattr(const char* path, struct stat* st, struct fuse_file_info* fi) {
     }
     else {
         free(info);
+        pthread_mutex_unlock(&json_mutex);
         return -ENOENT;
     }
-    
+    if (info->name)
+        free(info->name);
     free(info);
+    pthread_mutex_unlock(&json_mutex);
     return 0;
 }
 
@@ -164,6 +297,8 @@ int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
     filler(buf, ".", NULL, 0, 0);
     filler(buf, "..", NULL, 0, 0);
     
+    pthread_mutex_lock(&json_mutex);
+    
     // Determine the target
     json_t* target;
     if (strcmp(path, "/") == 0)
@@ -171,14 +306,20 @@ int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
     else {
         struct path_info* info = parse_path(path);
         
-        if (!info)
+        if (!info) {
+            pthread_mutex_unlock(&json_mutex);
             return -ENOENT;
+        }
         target = info->current;
+        if (info->name)
+            free(info->name);
         free(info);
     }
 
-    if (!target)
+    if (!target) {
+        pthread_mutex_unlock(&json_mutex);
         return -ENOENT;
+    }
     
     if (json_is_object(target)) {
         const char* key;
@@ -195,25 +336,36 @@ int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
             filler(buf, index_str, NULL, 0, 0);
         }
     }
-    else
+    else {
+        pthread_mutex_unlock(&json_mutex);
         return -ENOTDIR;
+    }
 
+    pthread_mutex_unlock(&json_mutex);
     return 0;
 }
 
 // Read file
 int fs_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_file_info* fi) {
+    pthread_mutex_lock(&json_mutex);
+
     // Get the path info
     struct path_info* info = parse_path(path);
-    if (!info)
+    if (!info) {
+        pthread_mutex_unlock(&json_mutex);
         return -ENOENT;
+    }
 
     json_t* value = info->current;
+    if (info->name)
+        free(info->name);
     free(info);
     
     // if it isn't a file
-    if (!value || is_directory(value))
+    if (!value || is_directory(value)) {
+        pthread_mutex_unlock(&json_mutex);
         return -EISDIR;
+    }
 
     const char* content = NULL;
     char temp_buf[128];
@@ -233,21 +385,28 @@ int fs_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_
         content = json_boolean_value(value) ? "true" : "false";
     else if (json_is_null(value))
         content = "null";
-    else
+    else {
+        pthread_mutex_unlock(&json_mutex);
         return -EIO;
+    }
 
-    if (!content)
+    if (!content) {
+        pthread_mutex_unlock(&json_mutex);
         return -EIO;
+    }
     
     size_t len = strlen(content);
 
-    if (offset >= len)
+    if (offset >= len) {
+        pthread_mutex_unlock(&json_mutex);
         return 0;
+    }
 
     if (offset + size > len)
         size = len - offset;
 
     memcpy(buf, content + offset, size);
+    pthread_mutex_unlock(&json_mutex);
     return size;
 }
 
@@ -272,41 +431,102 @@ int fs_write(const char* path, const char* buf, size_t size, off_t offset, struc
         return -EISDIR;
     }
     
-    if (!json_is_string(node)) {
-        free(info);
-        pthread_mutex_unlock(&json_mutex);
-        return -EINVAL;
-    }
-    
-    // Get the old value
-    const char* old_str = json_string_value(node);
-    size_t old_len = strlen(old_str);
-    // Define the new length
-    size_t new_len = (offset + size > old_len) ? offset + size : old_len;
-    
-    // Define the new string
-    char* new_str = malloc(new_len + 1);
-    if (!new_str) {
+    // Get the copy of buffer
+    char* str = strndup(buf, size);
+    if (!str) {
         free(info);
         pthread_mutex_unlock(&json_mutex);
         return -ENOMEM;
     }
     
-    // Copy the old data to new string
-    memcpy(new_str, old_str, old_len);
-    // Rest of space will be filled by zeros
-    if (offset > old_len)
-        memcpy(new_str + old_len, 0, offset - old_len);
+    // Result initially = size
+    int result = size;
+    
+    // If it's a string
+    if (json_is_string(node)) {
+        // Save the old value
+        const char* old_str = json_string_value(node);
+        size_t old_len = strlen(old_str);
+        // Define the new length
+        size_t new_len = (offset + size > old_len) ? offset + size : old_len;
+        
+        // Create a new string
+        char* new_str = malloc(new_len + 1);
+        if (!new_str) {
+            free(str);
+            free(info);
+            pthread_mutex_unlock(&json_mutex);
+            return -ENOMEM;
+        }
+        
+        // Copy old string into new string
+        memcpy(new_str, old_str, old_len);
+        // Rest of space will be filled by zeros
+        if (offset > old_len)
+            memset(new_str + old_len, 0, offset - old_len);
 
+        memcpy(new_str + offset, str, size);
+        new_str[new_len] = '\0';
+        
+        // Setup the new string
+        json_string_set(node, new_str);
+        free(new_str);
+    }
+    // If it's an integer
+    else if (json_is_integer(node)) {
+        char* endptr;
+        long long val = strtoll(str, &endptr, 10);
+        if (*endptr != '\0' && *endptr != '\n')
+            result = -EINVAL;
+        else
+            json_integer_set(node, val);
+    }
+    // If it's a real number
+    else if (json_is_real(node)) {
+        char* endptr;
+        double val = strtod(str, &endptr);
+        if (*endptr != '\0' && *endptr != '\n')
+            result = -EINVAL;
+        else
+            json_real_set(node, val);
+    }
+    // If it's a boolean
+    else if (json_is_boolean(node)) {
+        if (strcmp(str, "true") == 0 || strcmp(str, "1") == 0) {
+            int ret = replace_node(info, node, json_true());
+            result = (ret == 0) ? size : ret;
+        }
+        else if (strcmp(str, "false") == 0 || strcmp(str, "0") == 0) {
+            int ret = replace_node(info, node, json_false());
+            result = (ret == 0) ? size : ret;
+        }
+        else
+            result = -EINVAL;
+    }
+    // If it's a null
+    else if (json_is_null(node)) {
+        int ret = replace_node(info, node, json_string(str));
+        result = (ret == 0) ? size : ret;
+    }
+    else {
+        printf("EIO is here\n");
+        result = -EIO;
+    }
     
-    memcpy(new_str + offset, buf, size);
-    new_str[new_len] = '\0';
-    
-    json_string_set(node, new_str);
-    free(new_str);
+    if (info->name)
+        free(info->name);
+    free(str);
     free(info);
-    pthread_mutex_unlock(&json_mutex);
-    return size;
+    
+    if (result >= 0) {
+        //save_json();
+        pthread_mutex_unlock(&json_mutex);
+        return result;
+    }
+    else {
+        pthread_mutex_unlock(&json_mutex);
+        return result;
+    }
 }
 
 // Register fuse operations
