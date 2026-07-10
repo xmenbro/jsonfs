@@ -4,6 +4,10 @@
 
 // The root json
 json_t* root_json = NULL;
+// Init mutex
+pthread_mutex_t json_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Path to json file
+char* json_file_path = NULL;
 
 // Parse the path
 struct path_info* parse_path(const char* path) {
@@ -247,9 +251,68 @@ int fs_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_
     return size;
 }
 
+// Write data to file
+int fs_write(const char* path, const char* buf, size_t size, off_t offset, struct fuse_file_info* fi) {
+    if (offset < 0)
+        return -EINVAL;
+    // Close thread
+    pthread_mutex_lock(&json_mutex);
+    // Get the path
+    struct path_info* info = parse_path(path);
+    if (!info) {
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOENT;
+    }
+    
+    // Check the type of JSON we need the string only here
+    json_t* node = info->current;
+    if (is_directory(node)) {
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -EISDIR;
+    }
+    
+    if (!json_is_string(node)) {
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -EINVAL;
+    }
+    
+    // Get the old value
+    const char* old_str = json_string_value(node);
+    size_t old_len = strlen(old_str);
+    // Define the new length
+    size_t new_len = (offset + size > old_len) ? offset + size : old_len;
+    
+    // Define the new string
+    char* new_str = malloc(new_len + 1);
+    if (!new_str) {
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOMEM;
+    }
+    
+    // Copy the old data to new string
+    memcpy(new_str, old_str, old_len);
+    // Rest of space will be filled by zeros
+    if (offset > old_len)
+        memcpy(new_str + old_len, 0, offset - old_len);
+
+    
+    memcpy(new_str + offset, buf, size);
+    new_str[new_len] = '\0';
+    
+    json_string_set(node, new_str);
+    free(new_str);
+    free(info);
+    pthread_mutex_unlock(&json_mutex);
+    return size;
+}
+
 // Register fuse operations
 const struct fuse_operations fops = {
     .getattr = fs_getattr,
     .readdir = fs_readdir,
     .read = fs_read,
+    .write = fs_write,
 };
