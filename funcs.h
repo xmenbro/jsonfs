@@ -11,5 +11,7 @@ int is_directory(json_t* value);
 int replace_node(struct path_info* info, json_t* node, json_t* new_node);
 // Create entry - creates file or dir
 int create_entry(const char* path, json_t* new_node);
+// Remove entry - deletes file or dir
+int remove_entry(const char* path, int must_be_dir);
 
 #endif
