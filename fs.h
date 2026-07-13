@@ -40,5 +40,7 @@ int fs_open(const char* path, struct fuse_file_info* fi);
 int fs_mknod(const char* path, mode_t mode, dev_t dev);
 // Set time labels
 int fs_utimens(const char* path, const struct timespec ts[2], struct fuse_file_info* fi);
+// Create directory
+int fs_mkdir(const char* path, mode_t mode);
 
 #endif

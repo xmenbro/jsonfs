@@ -402,6 +402,11 @@ int fs_mknod(const char* path, mode_t mode, dev_t dev) {
     return create_entry(path, json_string(""));
 }
 
+// Create directory
+int fs_mkdir(const char* path, mode_t mode) {
+    return create_entry(path, json_object());
+}
+
 // Set time labels
 int fs_utimens(const char* path, const struct timespec ts[2], struct fuse_file_info* fi) {
     return 0;
@@ -417,4 +422,5 @@ const struct fuse_operations fops = {
     .open = fs_open,
     .mknod = fs_mknod,
     .utimens = fs_utimens,
+    .mkdir = fs_mkdir,
 };
