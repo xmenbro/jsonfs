@@ -31,6 +31,10 @@ int fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
 int fs_read(const char* path, char* buf, size_t size, off_t offset, struct fuse_file_info* fi);
 // Write data to file
 int fs_write(const char* path, const char* buf, size_t size, off_t offset, struct fuse_file_info* fi);
+// Truncate file
+int fs_truncate(const char* path, off_t size, struct fuse_file_info* fi);
+// Open file
+int fs_open(const char* path, struct fuse_file_info* fi);
 
 /* User functions */
 // Parse the path - path info
