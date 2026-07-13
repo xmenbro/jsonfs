@@ -1,0 +1,21 @@
+{
+  "string_field": "Hello World",
+  "integer_field": 42,
+  "real_field": 3.14159,
+  "boolean_true": true,
+  "boolean_false": false,
+  "null_field": null,
+  "nested": {
+    "string": "nested string",
+    "number": 100
+  },
+  "array": [
+    "item1",
+    2,
+    true,
+    null,
+    {
+      "key": "value"
+    }
+  ]
+}
