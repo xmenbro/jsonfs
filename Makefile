@@ -7,11 +7,11 @@ LDFLAGS = `pkg-config fuse3 jansson --cflags --libs`
 TARGET = fs.out
 
 # Source files
-SRCS = fs.c main.c
+SRCS = fs.c funcs.c main.c
 OBJS = $(SRCS:.c=.o)
 
 # Header files
-HEADERS = fs.h
+HEADERS = fs.h funcs.h
 
 # Default target
 all: $(TARGET)
