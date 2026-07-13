@@ -1,3 +1,6 @@
+#ifndef FS_H
+#define FS_H
+
 #define FUSE_USE_VERSION 31
 #include<fuse3/fuse.h>
 #include<jansson.h>
@@ -10,18 +13,16 @@ extern pthread_mutex_t json_mutex;
 // Path to json file
 extern char* json_file_path;
 
-
 // Fuse file operations
 extern const struct fuse_operations fops;
 
 // Path structure
-extern struct path_info {
+struct path_info {
     json_t* parent;
     json_t* current;
     char* name;
 };
 
-/* FUSE 3 FUNCTIONS */
 // Get file's attributes: mode, type, size
 int fs_getattr(const char* path, struct stat* st, struct fuse_file_info* fi);
 // Read directory
@@ -36,10 +37,4 @@ int fs_truncate(const char* path, off_t size, struct fuse_file_info* fi);
 // Open file
 int fs_open(const char* path, struct fuse_file_info* fi);
 
-/* User functions */
-// Parse the path - path info
-struct path_info* parse_path(const char* path);
-// Check if it's a directory
-int is_directory(json_t* value);
-// Replace node
-int replace_node(struct path_info* info, json_t* node, json_t* new_node);
+#endif
