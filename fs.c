@@ -13,6 +13,10 @@ char* json_file_path = NULL;
 // Get file's atrributes: mode, type, size
 int fs_getattr(const char* path, struct stat* st, struct fuse_file_info* fi) {
     memset(st, 0, sizeof(struct stat));
+    
+    // Set current user as an owner
+    st->st_uid = getuid();
+    st->st_gid = getgid();
 
     pthread_mutex_lock(&json_mutex);
 
@@ -412,6 +416,16 @@ int fs_utimens(const char* path, const struct timespec ts[2], struct fuse_file_i
     return 0;
 }
 
+// Remove file
+int fs_unlink(const char* path) {
+    return remove_entry(path, 0);
+}
+
+// Remove directory
+int fs_rmdir(const char* path) {
+    return remove_entry(path, 1);
+}
+
 // Register fuse operations
 const struct fuse_operations fops = {
     .getattr = fs_getattr,
@@ -423,4 +437,6 @@ const struct fuse_operations fops = {
     .mknod = fs_mknod,
     .utimens = fs_utimens,
     .mkdir = fs_mkdir,
+    .unlink = fs_unlink,
+    .rmdir = fs_rmdir,
 };

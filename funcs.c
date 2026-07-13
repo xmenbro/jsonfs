@@ -239,3 +239,156 @@ int create_entry(const char* path, json_t* new_node) {
     pthread_mutex_unlock(&json_mutex);
     return 0;
 }
+
+// Remove entry - deletes file or dir
+int remove_entry(const char* path, int must_be_dir) {
+    pthread_mutex_lock(&json_mutex);
+
+    // Can't delete root
+    if (strcmp(path, "/") == 0) {
+        pthread_mutex_unlock(&json_mutex);
+        return -EPERM;
+    }
+
+    // Get the path
+    struct path_info* info = parse_path(path);
+    if (!info) {
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOENT;
+    }
+    
+    // Get info
+    json_t* node = info->current;   
+    json_t* parent = info->parent;
+    char* name = info->name;
+
+    if (!node) {
+        if (name)
+            free(name);
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOENT;
+    }
+    
+    int is_dir = is_directory(node);
+    if (must_be_dir && !is_dir) {
+        // Directory expected but it's not
+        if (name)
+            free(name);
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOTDIR;
+    }
+
+    if (!must_be_dir && is_dir) {
+        // File expected but it's a directory
+        if (name)
+            free(name);
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -EISDIR;
+    }
+    
+    // We must check it's empty before deletion
+    if (is_dir) {
+        size_t count = 0;
+        if (json_is_object(node))
+            count = json_object_size(node);
+        else if (json_is_array(node))
+            count = json_array_size(node);
+        
+        if (count > 0) {
+            // For arrays, we need to clear all elements first
+            if (json_is_array(node)) {
+                // Remove all elements from the array
+                size_t array_size = json_array_size(node);
+                for (size_t i = array_size; i > 0; i--) {
+                    json_array_remove(node, i - 1);
+                }
+                // Now the array is empty, we can remove it
+            } else {
+                // For objects, if not empty, return error
+                if (name)
+                    free(name);
+                free(info);
+                pthread_mutex_unlock(&json_mutex);
+                return -ENOTEMPTY;
+            }
+        }  
+    }
+
+    // The parent must exist
+    if (!parent) {
+        if (name)
+            free(name);
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOENT;
+    }
+    
+    int ret = -ENOENT;
+
+    // If parent is an object, delete by key
+    if (json_is_object(parent))
+        ret = json_object_del(parent, name);
+    // If parent is an array, find and remove by index
+    else if (json_is_array(parent)) {
+        // Parse index from name
+        char* endptr;
+        long index = strtol(name, &endptr, 10);
+        
+        // Check if the name is a valid number
+        if (*endptr != '\0') {
+            if (name)
+                free(name);
+            free(info);
+            pthread_mutex_unlock(&json_mutex);
+            return -ENOENT;
+        }
+        
+        size_t array_size = json_array_size(parent);
+        if (index < 0 || index >= array_size) {
+            if (name)
+                free(name);
+            free(info);
+            pthread_mutex_unlock(&json_mutex);
+            return -ENOENT;
+        }
+        
+        // Get the element at this index
+        json_t* val = json_array_get(parent, index);
+        if (val != node) {
+            // The element at this index is not the one we expect
+            if (name)
+                free(name);
+            free(info);
+            pthread_mutex_unlock(&json_mutex);
+            return -ENOENT;
+        }
+        
+        // Remove element from array
+        ret = json_array_remove(parent, index);
+    }
+    else {
+        // Parent is neither object nor array
+        if (name)
+            free(name);
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOENT;
+    }
+        
+    if (ret != 0) {
+        if (name)
+            free(name);
+        free(info);
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOENT;
+    }
+
+    if (name)
+        free(name);
+    free(info);
+    pthread_mutex_unlock(&json_mutex);
+    return 0;
+}
