@@ -36,5 +36,9 @@ int fs_write(const char* path, const char* buf, size_t size, off_t offset, struc
 int fs_truncate(const char* path, off_t size, struct fuse_file_info* fi);
 // Open file
 int fs_open(const char* path, struct fuse_file_info* fi);
+// Create file
+int fs_mknod(const char* path, mode_t mode, dev_t dev);
+// Set time labels
+int fs_utimens(const char* path, const struct timespec ts[2], struct fuse_file_info* fi);
 
 #endif
