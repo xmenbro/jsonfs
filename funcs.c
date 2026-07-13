@@ -131,3 +131,111 @@ int replace_node(struct path_info* info, json_t* node, json_t* new_node) {
         return 0;
     }
 }
+
+// Create entry - creates file or dir
+int create_entry(const char* path, json_t* new_node) {
+    if (!new_node) 
+        return -ENOMEM;
+
+    pthread_mutex_lock(&json_mutex);
+
+    // Copy path
+    char* path_copy = strdup(path);
+    if (!path_copy) {
+        json_decref(new_node);
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOMEM;
+    }
+
+    // Delete slashes
+    size_t len = strlen(path_copy);
+    while (len > 0 && path_copy[len-1] == '/') {
+        path_copy[len-1] = '\0';
+        len--;
+    }
+
+    if (len == 0) { // The path is "/"
+        free(path_copy);
+        json_decref(new_node);
+        pthread_mutex_unlock(&json_mutex);
+        return -EPERM; // Can't create root
+    }
+
+    char* last_slash = strrchr(path_copy, '/');
+    if (!last_slash) {
+        free(path_copy);
+        json_decref(new_node);
+        pthread_mutex_unlock(&json_mutex);
+        return -EINVAL;
+    }
+
+    char* name = last_slash + 1;
+    if (*name == '\0') {
+        free(path_copy);
+        json_decref(new_node);
+        pthread_mutex_unlock(&json_mutex);
+        return -EINVAL;
+    }
+
+    // Define the parent's path
+    struct path_info* parent_info = NULL;
+    json_t* parent = NULL;
+
+    if (last_slash == path_copy) {
+        // Parent - root
+        parent_info = parse_path("/");
+        if (!parent_info) {
+            free(path_copy);
+            json_decref(new_node);
+            pthread_mutex_unlock(&json_mutex);
+            return -ENOENT;
+        }
+        parent = parent_info->current;
+    } else {
+        *last_slash = '\0';
+        parent_info = parse_path(path_copy);
+        if (!parent_info) {
+            free(path_copy);
+            json_decref(new_node);
+            pthread_mutex_unlock(&json_mutex);
+            return -ENOENT;
+        }
+        parent = parent_info->current;
+    }
+
+    // Parent must be an object
+    if (!json_is_object(parent)) {
+        if (parent_info) {
+            if (parent_info->name) free(parent_info->name);
+            free(parent_info);
+        }
+        free(path_copy);
+        json_decref(new_node);
+        pthread_mutex_unlock(&json_mutex);
+        return -ENOTDIR;
+    }
+
+    // It hasn't existed yet
+    if (json_object_get(parent, name)) {
+        if (parent_info) {
+            if (parent_info->name) free(parent_info->name);
+            free(parent_info);
+        }
+        free(path_copy);
+        json_decref(new_node);
+        pthread_mutex_unlock(&json_mutex);
+        return -EEXIST;
+    }
+
+    // Add a new node into a parent object
+    json_object_set_new(parent, name, new_node);
+
+    // Free resources
+    if (parent_info) {
+        if (parent_info->name) free(parent_info->name);
+        free(parent_info);
+    }
+    free(path_copy);
+    pthread_mutex_unlock(&json_mutex);
+    return 0;
+}
