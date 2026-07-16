@@ -426,6 +426,18 @@ int fs_rmdir(const char* path) {
     return remove_entry(path, 1);
 }
 
+// Destroy callback
+void fs_destroy(void* private_data) {
+    printf("Unmounting filesystem\n");
+    int result = save_json_file();
+    if (result != 0) {
+        fprintf(stderr, "ERROR: Failed to save JSON (error code: %d)\n", result);
+    } else {
+        printf("JSON saved successfully\n");
+    }
+    printf("=====================\n");
+}
+
 // Register fuse operations
 const struct fuse_operations fops = {
     .getattr = fs_getattr,
@@ -439,4 +451,5 @@ const struct fuse_operations fops = {
     .mkdir = fs_mkdir,
     .unlink = fs_unlink,
     .rmdir = fs_rmdir,
+    .destroy = fs_destroy
 };

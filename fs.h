@@ -46,5 +46,7 @@ int fs_mkdir(const char* path, mode_t mode);
 int fs_unlink(const char* path);
 // Remove directory
 int fs_rmdir(const char* path);
+// Destroy callback
+void fs_destroy(void* private_data);
 
 #endif
