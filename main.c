@@ -41,11 +41,24 @@ int main(int argc, char* argv[]) {
         free(fuse_argv);
         return 1;
     }
+    
+    // Save path to json file
+    json_file_path = strdup(json_file);
+    if (!json_file_path) {
+        fprintf(stderr, "Memory allocation failed for json_file_path\n");
+        json_decref(root_json);
+        free(fuse_argv);
+        return 1;
+    }
 
     // Start fuse
     int status = fuse_main(fuse_argc, fuse_argv, &fops, NULL);
 
     // Free memory
+    if (json_file_path) {
+        free(json_file_path);
+        json_file_path = NULL;
+    }
     json_decref(root_json);
     free(fuse_argv);
     return status;
