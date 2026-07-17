@@ -394,7 +394,7 @@ int remove_entry(const char* path, int must_be_dir) {
 }
 
 // Save changes to file
-int save_json(void) {
+int save_json_file(void) {
     // Check ability to save
     if (!json_file_path) {
         fprintf(stderr, "ERROR: json_file_path is NULL, cannot save\n");
@@ -410,7 +410,7 @@ int save_json(void) {
     printf("Saving JSON to: %s\n", json_file_path);
 
     pthread_mutex_lock(&json_mutex);
-    int result = json_dump_file(root_json, json_file_path, JSON_INDENT(4));
+    int result = json_dump_file(root_json, json_file_path, JSON_INDENT(4) | JSON_ENCODE_ANY);
     pthread_mutex_unlock(&json_mutex);
     
     if (result != 0) {

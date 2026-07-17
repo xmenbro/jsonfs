@@ -14,6 +14,6 @@ int create_entry(const char* path, json_t* new_node);
 // Remove entry - deletes file or dir
 int remove_entry(const char* path, int must_be_dir);
 // Save changes to file
-int save_json(void);
+int save_json_file(void);
 
 #endif
